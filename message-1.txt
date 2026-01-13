@@ -20,7 +20,7 @@ local CONFIG = {
 	SinkPriority = Enum.ContextActionPriority.High.Value + 2000,
 
 	-- 🔑 Input debounce
-	TwoPressCooldown = 0.15 -- seconds (tweak freely)
+	TwoPressCooldown = 0.18 -- seconds (tweak freely)
 }
 
 local STATES = {
@@ -296,3 +296,4 @@ end)
 
 -- Initial State
 FullReset()
+
