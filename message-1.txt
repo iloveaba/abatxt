@@ -9,18 +9,18 @@ local LocalPlayer = Players.LocalPlayer
 
 --[[ 
     CONFIGURATION 
-    Adjust these values as needed.
 ]]
 local CONFIG = {
 	MaxCount = 3,
-	Duration = 17, -- Duration of the lock
-	-- LockDelay: The mandatory delay before the engine-level sink activates.
-	-- This allows the 3rd key press to reach the game before we cut off input.
-	LockDelay = 1, 
-	UI_Y_Offset = 385, -- Moved down by 80px as requested
+	Duration = 17,
+	LockDelay = 1,
+	UI_Y_Offset = 385,
 	SoundID = "rbxassetid://75400675151988",
 	ActionName = "BlackFlash_EngineSink_Key2_Final",
-	SinkPriority = Enum.ContextActionPriority.High.Value + 2000 -- Ensure priority over game
+	SinkPriority = Enum.ContextActionPriority.High.Value + 2000,
+
+	-- 🔑 Input debounce
+	TwoPressCooldown = 0.15 -- seconds (tweak freely)
 }
 
 local STATES = {
@@ -30,7 +30,7 @@ local STATES = {
 }
 
 local System = {
-	Enabled = true, -- Global toggle state
+	Enabled = true,
 	State = STATES.IDLE,
 	Count = 0,
 	Timer = 0,
@@ -39,8 +39,7 @@ local System = {
 
 --// ENGINE LEVEL SINK //--
 
--- The sink function explicitly returns Sink to stop input propagation
-local function SinkInput(actionName, inputState, inputObject)
+local function SinkInput()
 	return Enum.ContextActionResult.Sink
 end
 
@@ -55,16 +54,15 @@ local function DisengageHardBlock()
 end
 
 local function EngageHardBlock()
-	if System.IsSinkBound then return end -- Prevent double binding
+	if System.IsSinkBound then return end
 
 	local attempts = 0
 	local maxAttempts = 3
 	local success = false
 
 	repeat
-		attempts = attempts + 1
+		attempts += 1
 
-		-- Bind Action at High Priority to override game scripts
 		ContextActionService:BindActionAtPriority(
 			CONFIG.ActionName,
 			SinkInput,
@@ -73,7 +71,6 @@ local function EngageHardBlock()
 			Enum.KeyCode.Two
 		)
 
-		-- Verification
 		if VerifyBinding() then
 			success = true
 			System.IsSinkBound = true
@@ -84,10 +81,10 @@ local function EngageHardBlock()
 	until success or attempts >= maxAttempts
 
 	if not success then
-		warn("[BF] Critical: Failed to bind input sink after retries. Resetting.")
-		-- Fallback: If we can't lock, we must reset to prevent state desync
-		return false 
+		warn("[BF] Failed to bind input sink.")
+		return false
 	end
+
 	return true
 end
 
@@ -100,7 +97,9 @@ local function getContainer()
 end
 
 for _, child in pairs(getContainer():GetChildren()) do
-	if child.Name == "BlackFlash_FSM_Toggle" then child:Destroy() end
+	if child.Name == "BlackFlash_FSM_Toggle" then
+		child:Destroy()
+	end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -111,8 +110,7 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = getContainer()
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 220, 0, 95) -- Slightly taller for toggle text
+MainFrame.Size = UDim2.new(0, 220, 0, 95)
 MainFrame.Position = UDim2.new(0, 20, 0, CONFIG.UI_Y_Offset)
 MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 14)
 MainFrame.BackgroundTransparency = 0.05
@@ -141,7 +139,7 @@ Title.Parent = MainFrame
 
 local ToggleLabel = Instance.new("TextLabel")
 ToggleLabel.Size = UDim2.new(1, -20, 0, 15)
-ToggleLabel.Position = UDim2.new(0, 10, 0, 78) -- Bottom placement
+ToggleLabel.Position = UDim2.new(0, 10, 0, 78)
 ToggleLabel.BackgroundTransparency = 1
 ToggleLabel.Font = Enum.Font.GothamBold
 ToggleLabel.Text = "SYSTEM: ON [L]"
@@ -205,21 +203,10 @@ SoundParams.Parent = MainFrame
 --// LOGIC //--
 
 local function UpdateVisuals()
-	-- Toggle Status
-	if System.Enabled then
-		ToggleLabel.Text = "LOCKING: ON [L]"
-		ToggleLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-	else
-		ToggleLabel.Text = "LOCKING: OFF [L]"
-		ToggleLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-	end
-
 	if not System.Enabled then
-		-- Disabled visual state
 		CounterLabel.Text = "- / -"
 		TimerLabel.Text = "DISABLED"
-		BarFill.Size = UDim2.new(0,0,1,0)
-		UIStroke.Color = Color3.fromRGB(45, 45, 45)
+		BarFill.Size = UDim2.new(0, 0, 1, 0)
 		LockStatus.TextTransparency = 1
 		return
 	end
@@ -228,18 +215,10 @@ local function UpdateVisuals()
 
 	if System.State == STATES.IDLE then
 		TimerLabel.Text = "IDLE"
-		TimerLabel.TextColor3 = Color3.fromRGB(100, 100, 110)
-		BarFill.Size = UDim2.new(0, 0, 1, 0)
-		BarFill.BackgroundColor3 = Color3.fromRGB(200, 30, 30)
-		UIStroke.Color = Color3.fromRGB(45, 45, 45)
 		LockStatus.TextTransparency = 1
 	elseif System.State == STATES.CHARGING then
 		TimerLabel.Text = "READY"
-		TimerLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-		LockStatus.TextTransparency = 1
 	elseif System.State == STATES.LOCKED then
-		UIStroke.Color = Color3.fromRGB(180, 180, 180)
-		BarFill.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
 		TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		LockStatus.TextTransparency = 0
 	end
@@ -247,18 +226,10 @@ end
 
 local function FullReset()
 	DisengageHardBlock()
-
 	System.State = STATES.IDLE
 	System.Count = 0
 	System.Timer = 0
-
 	UpdateVisuals()
-end
-
-local function PlayEndSound()
-	if SoundParams and SoundParams.Parent then
-		SoundParams:Play()
-	end
 end
 
 local function TransitionToLocked()
@@ -266,106 +237,47 @@ local function TransitionToLocked()
 
 	System.State = STATES.LOCKED
 	System.Timer = CONFIG.Duration
-
-	-- Visual pulse start
-	local tween = TweenService:Create(UIStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(255, 50, 50)})
-	tween:Play()
 	UpdateVisuals()
 
-	-- DELAYED LOCK LOGIC
-	-- We do NOT bind immediately. We wait lockDelay seconds.
-	-- This ensures the game processes the 3rd key press.
 	task.delay(CONFIG.LockDelay, function()
-		-- Verification inside the delayed thread:
-		-- 1. Must still be enabled
-		-- 2. Must still be in LOCKED state (user didn't reset)
 		if System.Enabled and System.State == STATES.LOCKED then
-			local bound = EngageHardBlock()
-			if not bound then
-				FullReset() -- Force reset if binding failed critically
+			if not EngageHardBlock() then
+				FullReset()
 			end
 		end
 	end)
 end
 
---// TOGGLE LOGIC //--
-local function ToggleSystem()
-	System.Enabled = not System.Enabled
+--// INPUT //--
 
-	if not System.Enabled then
-		-- If turning OFF, immediate cleanup
-		FullReset()
-	else
-		-- If turning ON, just visual update, state starts at IDLE
-		UpdateVisuals()
-	end
-end
-
---// LOOPS & INPUT //--
-
-RunService.RenderStepped:Connect(function(dt)
-	if not System.Enabled then return end
-
-	if System.State == STATES.LOCKED then
-		-- Count failsafe
-		if System.Count < CONFIG.MaxCount then
-			FullReset()
-			return
-		end
-
-		System.Timer = System.Timer - dt
-
-		-- Visuals
-		local progress = math.clamp(System.Timer / CONFIG.Duration, 0, 1)
-		BarFill.Size = UDim2.new(progress, 0, 1, 0)
-		TimerLabel.Text = string.format("COOLDOWN: %.1fs", math.max(0, System.Timer))
-
-		local pulse = (math.sin(tick() * 8) + 1) / 2
-		LockStatus.TextTransparency = 0.2 + (pulse * 0.5)
-
-		-- Timer End
-		if System.Timer <= 0 then
-			PlayEndSound()
-			FullReset()
-		end
-	else
-		-- Idle/Charging bar reset
-		if BarFill.Size.X.Scale > 0 then
-			BarFill.Size = UDim2.new(0, 0, 1, 0)
-		end
-	end
-end)
-
-local InputDebounce = false
 local ToggleDebounce = false
+local LastTwoPress = 0
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	-- Toggle L Handling (High Priority in logic)
 	if input.KeyCode == Enum.KeyCode.L and not gameProcessed then
-		if not ToggleDebounce then
-			ToggleDebounce = true
-			ToggleSystem()
-			task.wait(0.2)
-			ToggleDebounce = false
+		if ToggleDebounce then return end
+		ToggleDebounce = true
+		System.Enabled = not System.Enabled
+		if not System.Enabled then
+			FullReset()
+		else
+			UpdateVisuals()
 		end
+		task.wait(0.2)
+		ToggleDebounce = false
 		return
 	end
 
-	-- If Disabled or Locked, ignore inputs (Locked inputs are handled by CAS Sink)
-	if not System.Enabled then return end
-	if System.State == STATES.LOCKED then return end
-	if gameProcessed then return end
+	if not System.Enabled or System.State == STATES.LOCKED or gameProcessed then
+		return
+	end
 
 	if input.KeyCode == Enum.KeyCode.Two then
-		if InputDebounce then return end
-		InputDebounce = true
+		local now = os.clock()
+		if now - LastTwoPress < CONFIG.TwoPressCooldown then return end
+		LastTwoPress = now
 
-		System.Count = System.Count + 1
-
-		if System.Count > CONFIG.MaxCount then
-			System.Count = CONFIG.MaxCount
-		end
-
+		System.Count = math.clamp(System.Count + 1, 0, CONFIG.MaxCount)
 		UpdateVisuals()
 
 		if System.Count >= CONFIG.MaxCount then
@@ -373,9 +285,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		else
 			System.State = STATES.CHARGING
 		end
-
-		task.wait(0.05)
-		InputDebounce = false
 	end
 end)
 
